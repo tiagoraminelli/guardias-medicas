@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestión de Guardias - Hospital Julio César Villanueva</title>
+<link id="favicon" rel="icon" href="img/santa fe.webp">
+<link rel="stylesheet" href="estilo.css">
+<!-- SheetJS para leer/escribir Excel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<!-- ============================================================
+     HEADER
+     ============================================================ -->
+<header class="no-print">
+  <div class="header-inner">
+    <div class="brand">
+      <img id="brandLogo" src="img/hospital.png" alt="Hospital Julio César Villanueva" class="brand-logo">
+      <div class="brand-text">
+        <h1>Hospital Julio César Villanueva</h1>
+        <p>Sistema de Gestión de Guardias — San Cristóbal, Santa Fe</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button onclick="abrirModalPlantilla()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        Plantilla Excel
+      </button>
+      <button onclick="exportarAExcel()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Excel
+      </button>
+      <button onclick="exportarJSON()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        JSON
+      </button>
+      <button onclick="document.getElementById('inputJSON').click()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Importar JSON
+      </button>
+      <input type="file" id="inputJSON" accept=".json" class="hidden" onchange="importarJSON(event)">
+      <button class="primary" onclick="imprimirReporte()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Imprimir Todo
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ============================================================
+       CONFIGURACIÓN DE VALORES
+       ============================================================ -->
+  <div class="config no-print">
+    <div class="field">
+      <label>Valor Guardia Lunes a Viernes ($)</label>
+      <input type="number" id="valorSemana" value="340000" oninput="recalcularTodo()">
+    </div>
+    <div class="field">
+      <label>Valor Guardia Sábados, Domingos y Feriados ($)</label>
+      <input type="number" id="valorFinde" value="380000" oninput="recalcularTodo()">
+    </div>
+    <div class="field">
+      <label>Valor Viático por día ($)</label>
+      <input type="number" id="valorViatico" value="60000" oninput="recalcularTodo()">
+    </div>
+    <div class="field">
+      <label>Importar Calendario Excel</label>
+      <input type="file" id="inputExcel" accept=".xlsx, .xls" onchange="importarExcel(event)" style="padding: 5px;">
+      <div class="help">Subí el archivo con el formato de guardias.</div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       CALENDARIO DE GUARDIAS
+       ============================================================ -->
+  <div class="panel no-print">
+    <div class="panel-head">
+      <div class="panel-head-left">
+        <h2>Calendario de Guardias</h2>
+        <span class="indicador-orden" id="mesTitulo">Sin datos</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="agregarFilaManual()">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Agregar Día
+        </button>
+        <button class="danger" onclick="vaciarTodo()">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Vaciar
+        </button>
+      </div>
+    </div>
+    
+    <div style="overflow-x: auto; padding: 16px;">
+      <table class="tabla-guardias" id="tablaCalendario">
+        <thead>
+          <tr>
+            <th style="width: 100px;">Día</th>
+            <th style="width: 80px;">Nº</th>
+            <th style="width: 180px;">Profesional</th>
+            <th style="width: 100px;">Horas</th>
+            <th style="width: 100px;">¿Viático?</th>
+            <th style="width: 120px;">Monto Base</th>
+            <th style="width: 120px;">Viático</th>
+            <th style="width: 130px;">Total</th>
+            <th style="width: 80px;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="cuerpoTabla"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       RESUMEN POR PROFESIONAL Y QUINCENA
+       ============================================================ -->
+  <div class="panel no-print">
+    <div class="panel-head">
+      <div class="panel-head-left">
+        <h2>Resumen de Liquidación</h2>
+        <span class="indicador-orden">Totales por Quincena</span>
+      </div>
+    </div>
+    <div style="padding: 16px; overflow-x: auto;">
+      <table class="tabla-resumen" id="tablaResumen">
+        <thead>
+          <tr>
+            <th>Profesional</th>
+            <th>1° Quincena</th>
+            <th>2° Quincena</th>
+            <th>Total General</th>
+            <th style="width:80px;text-align:center;">Recibo</th>
+          </tr>
+        </thead>
+        <tbody id="cuerpoResumen"></tbody>
+        <tfoot id="pieResumen"></tfoot>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============================================================
+     MODAL: DESCARGAR PLANTILLA EXCEL
+     ============================================================ -->
+<div id="modalPlantilla" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>Descargar Plantilla Excel</h3>
+      <button class="modal-close" onclick="cerrarModalPlantilla()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-top:0;font-size:13px;color:#6b7280;">Seleccioná el mes y año para generar la plantilla en blanco con los días correspondientes.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="field">
+          <label>Mes</label>
+          <select id="plantillaMes" class="field-select">
+            <option value="0">Enero</option>
+            <option value="1">Febrero</option>
+            <option value="2">Marzo</option>
+            <option value="3">Abril</option>
+            <option value="4">Mayo</option>
+            <option value="5">Junio</option>
+            <option value="6">Julio</option>
+            <option value="7">Agosto</option>
+            <option value="8">Septiembre</option>
+            <option value="9">Octubre</option>
+            <option value="10">Noviembre</option>
+            <option value="11">Diciembre</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Año</label>
+          <input type="number" id="plantillaAnio" value="2026" min="2020" max="2100">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button onclick="cerrarModalPlantilla()">Cancelar</button>
+      <button class="primary" onclick="descargarPlantillaExcel()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Descargar Excel
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
