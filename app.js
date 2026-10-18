@@ -472,8 +472,8 @@ function imprimirReporte() {
   const totalGeneral = guardias.reduce((acc, g) => acc + (g.total || 0), 0);
 
   const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
-  const urlSantaFe = baseUrl + 'img/santa fe.webp';
-  const urlHospital = baseUrl + 'img/hospital.png';
+  const urlSantaFe = baseUrl + 'santa fe.webp';
+  const urlHospital = baseUrl + 'hospital.png';
 
   const htmlReporte = `
     <!DOCTYPE html>
