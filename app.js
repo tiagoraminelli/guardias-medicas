@@ -337,8 +337,8 @@ function descargarRecibo(nombreProfesional) {
   const total = q1 + q2;
 
   const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
-  const urlSantaFe = baseUrl + 'img/santa fe.webp';
-  const urlHospital = baseUrl + 'img/hospital.png';
+  const urlSantaFe = baseUrl + 'santa fe.webp';
+  const urlHospital = baseUrl + 'hospital.png';
 
   const htmlRecibo = `
     <!DOCTYPE html>
