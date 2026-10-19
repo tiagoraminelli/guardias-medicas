@@ -634,6 +634,161 @@ function imprimirReporte() {
 }
 
 // ============================================================
+// IMPRIMIR SOLO HABERES (RECIBOS INDIVIDUALES)
+// ============================================================
+function imprimirHaberes() {
+  if (guardias.length === 0) {
+    alert('No hay datos para imprimir.');
+    return;
+  }
+
+  const mesTexto = document.getElementById('mesTitulo').textContent;
+  const fechaHoy = new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  // Agrupar datos por profesional
+  const profesionales = {};
+  guardias.forEach(g => {
+    const nombre = g.profesional || 'Sin nombre';
+    if (!profesionales[nombre]) {
+      profesionales[nombre] = { q1: 0, q2: 0, guardias: [] };
+    }
+    const esPrimeraQuincena = (g.numero || 0) <= 15;
+    if (esPrimeraQuincena) {
+      profesionales[nombre].q1 += g.total || 0;
+    } else {
+      profesionales[nombre].q2 += g.total || 0;
+    }
+    profesionales[nombre].guardias.push(g);
+  });
+
+  const nombresOrdenados = Object.keys(profesionales).sort();
+
+  // Obtener URLs absolutas de los logos
+  const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+  const urlSantaFe = baseUrl + 'santa fe.webp';
+  const urlHospital = baseUrl + 'hospital.png';
+
+  // Construir el HTML de los haberes
+  let htmlHaberes = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Haberes Profesionales - ${mesTexto}</title>
+      <style>
+        @page { size: A4 portrait; margin: 15mm; }
+        * { box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; padding: 20px; background: #fff; font-size: 11pt; }
+        .header { position: relative; padding-bottom: 12px; margin-bottom: 20px; border-bottom: 2px solid #000; min-height: 65px; }
+        .header .logo-santafe { position: absolute; top: 0; right: 0; height: 40px; width: auto; object-fit: contain; }
+        .header .logo-hospital { display: block; margin: 0 auto 10px auto; height: 60px; width: auto; object-fit: contain; }
+        .header h1 { text-align: center; font-size: 15pt; font-weight: 700; margin: 0 0 4px 0; letter-spacing: 0.04em; text-transform: uppercase; }
+        .header .sub { text-align: center; font-size: 10pt; color: #333; }
+        .recibo { page-break-inside: avoid; border: 1px solid #000; padding: 16px 18px; margin-bottom: 24px; }
+        .recibo-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding-bottom: 6px; margin-bottom: 12px; }
+        .recibo-header h3 { margin: 0; font-size: 12pt; text-transform: uppercase; }
+        .recibo-header span { font-size: 10pt; color: #333; }
+        .recibo-datos { display: flex; justify-content: space-between; font-size: 10pt; margin-bottom: 10px; }
+        .recibo-datos p { margin: 3px 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 10pt; margin-bottom: 12px; }
+        th, td { border: 1px solid #000; padding: 5px 7px; text-align: left; }
+        th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 9pt; }
+        .recibo-totales { display: flex; justify-content: flex-end; gap: 25px; font-size: 11pt; font-weight: 700; margin-top: 8px; }
+        .recibo-firma { margin-top: 45px; display: flex; justify-content: space-between; }
+        .recibo-firma div { border-top: 1px solid #000; width: 220px; text-align: center; padding-top: 6px; font-size: 9pt; }
+        .no-print { text-align: center; margin-bottom: 20px; display: flex; gap: 10px; justify-content: center; }
+        .no-print button { padding: 8px 20px; font-size: 13px; background: #111827; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-family: inherit; }
+        .no-print button:hover { background: #000; }
+        .no-print button.secundario { background: #fff; color: #111827; border: 1px solid #d1d5db; }
+        .no-print button.secundario:hover { background: #f9fafb; }
+        .page-break { page-break-after: always; }
+        @media print { .no-print { display: none !important; } body { padding: 0; margin: 0; } }
+      </style>
+    </head>
+    <body>
+      <div class="no-print">
+        <button onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>
+        <button class="secundario" onclick="window.close()">Cerrar</button>
+      </div>
+
+      <div class="header">
+        <img src="${urlSantaFe}" alt="Santa Fe" class="logo-santafe">
+        <img src="${urlHospital}" alt="Hospital" class="logo-hospital">
+        <h1>Hospital Julio César Villanueva</h1>
+        <div class="sub">San Cristóbal — Santa Fe</div>
+        <div class="sub"><strong>Recibos de Haberes — Guardias Médicas</strong></div>
+        <div class="sub">${mesTexto} | Generado el ${fechaHoy}</div>
+      </div>
+
+      <h2 class="seccion" style="font-size:12pt; margin:20px 0 8px 0; text-transform:uppercase; border-bottom:1px solid #666; padding-bottom:3px;">Recibos Individuales por Profesional</h2>
+      
+      ${nombresOrdenados.map((nombre, index) => {
+        const p = profesionales[nombre];
+        const total = p.q1 + p.q2;
+        return `
+          <div class="recibo">
+            <div class="recibo-header">
+              <h3>Recibo de Haberes — Guardias Médicas</h3>
+              <span>${mesTexto}</span>
+            </div>
+            <div class="recibo-datos">
+              <p><strong>Profesional:</strong> ${nombre}</p>
+              <p><strong>Fecha de emisión:</strong> ${fechaHoy}</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Día</th>
+                  <th>Nº</th>
+                  <th>Horas</th>
+                  <th>Viático</th>
+                  <th>Monto Base</th>
+                  <th>Viático $</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${p.guardias.map(g => `
+                  <tr>
+                    <td>${g.dia}</td>
+                    <td>${g.numero || ''}</td>
+                    <td>${g.horas}</td>
+                    <td>${g.viatico ? 'Sí' : 'No'}</td>
+                    <td>${formatearMoneda(g.montoBase || 0)}</td>
+                    <td>${formatearMoneda(g.montoViatico || 0)}</td>
+                    <td>${formatearMoneda(g.total || 0)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            <div class="recibo-totales">
+              <span>1° Quincena: ${formatearMoneda(p.q1)}</span>
+              <span>2° Quincena: ${formatearMoneda(p.q2)}</span>
+              <span>TOTAL A LIQUIDAR: ${formatearMoneda(total)}</span>
+            </div>
+            <div class="recibo-firma">
+              <div>Firma del Profesional</div>
+              <div>Firma y Sello — Administración</div>
+            </div>
+          </div>
+          ${index < nombresOrdenados.length - 1 ? '<div class="page-break"></div>' : ''}
+        `;
+      }).join('')}
+    </body>
+    </html>
+  `;
+
+  // Abrir nueva ventana
+  const ventana = window.open('', '_blank');
+  if (!ventana) {
+    alert('El navegador bloqueó la apertura de la nueva pestaña. Permití las ventanas emergentes para este sitio.');
+    return;
+  }
+  ventana.document.write(htmlHaberes);
+  ventana.document.close();
+}
+
+// ============================================================
 // EXPORTAR A EXCEL
 // ============================================================
 function exportarAExcel() {
