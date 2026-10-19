@@ -166,16 +166,19 @@ function renderizarTabla() {
   if (!tbody) return;
 
   if (guardias.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:#9ca3af;">No hay guardias cargadas. Importá un Excel o agregá un día manualmente.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:#9ca3af;">No hay guardias cargadas. Importá un Excel o agregá un día manualmente.</td></tr>';
     return;
   }
 
   guardias.sort((a, b) => (a.numero || 0) - (b.numero || 0));
 
   tbody.innerHTML = guardias.map((g) => {
-    const esFindeClass = (g.esFinde || g.esFeriado) ? 'finde' : '';
+    let rowClass = '';
+    if (g.esFeriado) rowClass = 'feriado';
+    else if (g.esFinde) rowClass = 'finde';
+
     return `
-      <tr class="${esFindeClass}" data-id="${g.id}">
+      <tr class="${rowClass}" data-id="${g.id}">
         <td>
           <select onchange="actualizarGuardia('${g.id}', 'dia', this.value); recalcularTodo();">
             ${DIAS_SEMANA.map(d => `<option value="${d}" ${g.dia === d ? 'selected' : ''}>${d}</option>`).join('')}
@@ -192,6 +195,9 @@ function renderizarTabla() {
         </td>
         <td style="text-align:center;">
           <input type="checkbox" ${g.viatico ? 'checked' : ''} onchange="actualizarGuardia('${g.id}', 'viatico', this.checked); recalcularTodo();">
+        </td>
+        <td style="text-align:center;">
+          <input type="checkbox" ${g.esFeriado ? 'checked' : ''} onchange="actualizarGuardia('${g.id}', 'esFeriado', this.checked); recalcularTodo();">
         </td>
         <td class="monto-calc">${formatearMoneda(g.montoBase || 0)}</td>
         <td class="monto-calc">${formatearMoneda(g.montoViatico || 0)}</td>
@@ -215,6 +221,8 @@ function actualizarGuardia(id, campo, valor) {
     g.esFinde = valor === 'Sábado' || valor === 'Domingo';
   } else if (campo === 'viatico') {
     g.viatico = valor;
+  } else if (campo === 'esFeriado') {
+    g.esFeriado = valor;
   } else if (campo === 'horas') {
     g.horas = valor;
   } else {
@@ -228,19 +236,58 @@ function eliminarGuardia(id) {
   recalcularTodo();
 }
 
-function agregarFilaManual() {
+// ============================================================
+// MODAL NUEVO DÍA
+// ============================================================
+function abrirModalNuevoDia() {
+  // Poblar el select de días si está vacío
+  const select = document.getElementById('nuevoDiaSemana');
+  if (select.options.length === 0) {
+    select.innerHTML = DIAS_SEMANA.map(d => `<option value="${d}">${d}</option>`).join('');
+  }
+  
+  // Limpiar campos
+  document.getElementById('nuevoDiaSemana').value = 'Lunes';
+  document.getElementById('nuevoDiaNumero').value = '';
+  document.getElementById('nuevoDiaProfesional').value = '';
+  document.getElementById('nuevoDiaHoras').value = 24;
+  document.getElementById('nuevoDiaViatico').checked = false;
+  document.getElementById('nuevoDiaFeriado').checked = false;
+  
+  document.getElementById('modalNuevoDia').classList.remove('hidden');
+}
+
+function cerrarModalNuevoDia() {
+  document.getElementById('modalNuevoDia').classList.add('hidden');
+}
+
+function guardarNuevoDia() {
+  const dia = document.getElementById('nuevoDiaSemana').value;
+  const numero = parseInt(document.getElementById('nuevoDiaNumero').value) || null;
+  const profesional = document.getElementById('nuevoDiaProfesional').value.trim();
+  const horas = parseInt(document.getElementById('nuevoDiaHoras').value) || 24;
+  const viatico = document.getElementById('nuevoDiaViatico').checked;
+  const esFeriado = document.getElementById('nuevoDiaFeriado').checked;
+
+  if (!profesional && numero === null) {
+    alert('Completá al menos el número de día o el nombre del profesional.');
+    return;
+  }
+
   guardias.push({
     id: Date.now(),
-    dia: 'Lunes',
-    numero: null,
-    profesional: '',
-    horas: 24,
-    viatico: false,
-    esFinde: false,
-    esFeriado: false,
+    dia: dia,
+    numero: numero,
+    profesional: profesional,
+    horas: horas,
+    viatico: viatico,
+    esFinde: dia === 'Sábado' || dia === 'Domingo',
+    esFeriado: esFeriado,
     mes: 'Manual'
   });
+
   recalcularTodo();
+  cerrarModalNuevoDia();
 }
 
 function vaciarTodo() {
@@ -442,199 +489,7 @@ function descargarRecibo(nombreProfesional) {
 }
 
 // ============================================================
-// REPORTE COMPLETO EN NUEVA PESTAÑA
-// ============================================================
-function imprimirReporte() {
-  if (guardias.length === 0) {
-    alert('No hay datos para imprimir.');
-    return;
-  }
-
-  const mesTexto = document.getElementById('mesTitulo').textContent;
-  const fechaHoy = new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
-
-  const profesionales = {};
-  guardias.forEach(g => {
-    const nombre = g.profesional || 'Sin nombre';
-    if (!profesionales[nombre]) {
-      profesionales[nombre] = { q1: 0, q2: 0, guardias: [] };
-    }
-    const esPrimeraQuincena = (g.numero || 0) <= 15;
-    if (esPrimeraQuincena) {
-      profesionales[nombre].q1 += g.total || 0;
-    } else {
-      profesionales[nombre].q2 += g.total || 0;
-    }
-    profesionales[nombre].guardias.push(g);
-  });
-
-  const nombresOrdenados = Object.keys(profesionales).sort();
-  const totalGeneral = guardias.reduce((acc, g) => acc + (g.total || 0), 0);
-
-  const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
-  const urlSantaFe = baseUrl + 'santa fe.webp';
-  const urlHospital = baseUrl + 'hospital.png';
-
-  const htmlReporte = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <title>Reporte de Guardias - ${mesTexto}</title>
-      <style>
-        @page { size: A4 portrait; margin: 15mm; }
-        * { box-sizing: border-box; }
-        body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; padding: 20px; background: #fff; font-size: 11pt; }
-        .header { position: relative; padding-bottom: 12px; margin-bottom: 20px; border-bottom: 2px solid #000; min-height: 65px; }
-        .header .logo-santafe { position: absolute; top: 0; right: 0; height: 40px; width: auto; object-fit: contain; }
-        .header .logo-hospital { display: block; margin: 0 auto 10px auto; height: 60px; width: auto; object-fit: contain; }
-        .header h1 { text-align: center; font-size: 15pt; font-weight: 700; margin: 0 0 4px 0; letter-spacing: 0.04em; text-transform: uppercase; }
-        .header .sub { text-align: center; font-size: 10pt; color: #333; }
-        h2.seccion { font-size: 12pt; margin: 20px 0 8px 0; text-transform: uppercase; border-bottom: 1px solid #666; padding-bottom: 3px; }
-        table { width: 100%; border-collapse: collapse; font-size: 10pt; margin-bottom: 12px; }
-        th, td { border: 1px solid #000; padding: 5px 7px; text-align: left; }
-        th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 9pt; }
-        tfoot td { font-weight: 700; background: #f3f4f6; }
-        .recibo { page-break-inside: avoid; border: 1px solid #000; padding: 16px 18px; margin-bottom: 24px; }
-        .recibo-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding-bottom: 6px; margin-bottom: 12px; }
-        .recibo-header h3 { margin: 0; font-size: 12pt; text-transform: uppercase; }
-        .recibo-header span { font-size: 10pt; color: #333; }
-        .recibo-datos { display: flex; justify-content: space-between; font-size: 10pt; margin-bottom: 10px; }
-        .recibo-datos p { margin: 3px 0; }
-        .recibo-totales { display: flex; justify-content: flex-end; gap: 25px; font-size: 11pt; font-weight: 700; margin-top: 8px; }
-        .recibo-firma { margin-top: 45px; display: flex; justify-content: space-between; }
-        .recibo-firma div { border-top: 1px solid #000; width: 220px; text-align: center; padding-top: 6px; font-size: 9pt; }
-        .no-print { text-align: center; margin-bottom: 20px; display: flex; gap: 10px; justify-content: center; }
-        .no-print button { padding: 8px 20px; font-size: 13px; background: #111827; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-family: inherit; }
-        .no-print button:hover { background: #000; }
-        .no-print button.secundario { background: #fff; color: #111827; border: 1px solid #d1d5db; }
-        .no-print button.secundario:hover { background: #f9fafb; }
-        .page-break { page-break-after: always; }
-        @media print { .no-print { display: none !important; } body { padding: 0; margin: 0; } .recibo { border: 1px solid #000; } }
-      </style>
-    </head>
-    <body>
-      <div class="no-print">
-        <button onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>
-        <button class="secundario" onclick="window.close()">Cerrar</button>
-      </div>
-
-      <div class="header">
-        <img src="${urlSantaFe}" alt="Santa Fe" class="logo-santafe">
-        <img src="${urlHospital}" alt="Hospital" class="logo-hospital">
-        <h1>Hospital Julio César Villanueva</h1>
-        <div class="sub">San Cristóbal — Santa Fe</div>
-        <div class="sub"><strong>Reporte de Guardias Médicas — ${mesTexto}</strong></div>
-        <div class="sub">Generado el ${fechaHoy}</div>
-      </div>
-
-      <h2 class="seccion">Detalle General de Guardias</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Día</th>
-            <th>Nº</th>
-            <th>Profesional</th>
-            <th>Horas</th>
-            <th>Viático</th>
-            <th>Monto Base</th>
-            <th>Viático $</th>
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${guardias.map(g => `
-            <tr>
-              <td>${g.dia}</td>
-              <td>${g.numero || ''}</td>
-              <td>${g.profesional}</td>
-              <td>${g.horas}</td>
-              <td>${g.viatico ? 'Sí' : 'No'}</td>
-              <td>${formatearMoneda(g.montoBase || 0)}</td>
-              <td>${formatearMoneda(g.montoViatico || 0)}</td>
-              <td><strong>${formatearMoneda(g.total || 0)}</strong></td>
-            </tr>
-          `).join('')}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="7" style="text-align:right;">TOTAL GENERAL</td>
-            <td>${formatearMoneda(totalGeneral)}</td>
-          </tr>
-        </tfoot>
-      </table>
-
-      <div class="page-break"></div>
-
-      <h2 class="seccion">Recibos Individuales por Profesional</h2>
-      
-      ${nombresOrdenados.map((nombre, index) => {
-        const p = profesionales[nombre];
-        const total = p.q1 + p.q2;
-        return `
-          <div class="recibo">
-            <div class="recibo-header">
-              <h3>Recibo de Haberes — Guardias Médicas</h3>
-              <span>${mesTexto}</span>
-            </div>
-            <div class="recibo-datos">
-              <p><strong>Profesional:</strong> ${nombre}</p>
-              <p><strong>Fecha de emisión:</strong> ${fechaHoy}</p>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Día</th>
-                  <th>Nº</th>
-                  <th>Horas</th>
-                  <th>Viático</th>
-                  <th>Monto Base</th>
-                  <th>Viático $</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${p.guardias.map(g => `
-                  <tr>
-                    <td>${g.dia}</td>
-                    <td>${g.numero || ''}</td>
-                    <td>${g.horas}</td>
-                    <td>${g.viatico ? 'Sí' : 'No'}</td>
-                    <td>${formatearMoneda(g.montoBase || 0)}</td>
-                    <td>${formatearMoneda(g.montoViatico || 0)}</td>
-                    <td>${formatearMoneda(g.total || 0)}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-            <div class="recibo-totales">
-              <span>1° Quincena: ${formatearMoneda(p.q1)}</span>
-              <span>2° Quincena: ${formatearMoneda(p.q2)}</span>
-              <span>TOTAL A LIQUIDAR: ${formatearMoneda(total)}</span>
-            </div>
-            <div class="recibo-firma">
-              <div>Firma del Profesional</div>
-              <div>Firma y Sello — Administración</div>
-            </div>
-          </div>
-          ${index < nombresOrdenados.length - 1 ? '<div class="page-break"></div>' : ''}
-        `;
-      }).join('')}
-    </body>
-    </html>
-  `;
-
-  const ventana = window.open('', '_blank');
-  if (!ventana) {
-    alert('El navegador bloqueó la apertura de la nueva pestaña. Permití las ventanas emergentes para este sitio.');
-    return;
-  }
-  ventana.document.write(htmlReporte);
-  ventana.document.close();
-}
-
-// ============================================================
-// IMPRIMIR SOLO HABERES (RECIBOS INDIVIDUALES)
+// IMPRIMIR SOLO HABERES
 // ============================================================
 function imprimirHaberes() {
   if (guardias.length === 0) {
@@ -645,7 +500,6 @@ function imprimirHaberes() {
   const mesTexto = document.getElementById('mesTitulo').textContent;
   const fechaHoy = new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  // Agrupar datos por profesional
   const profesionales = {};
   guardias.forEach(g => {
     const nombre = g.profesional || 'Sin nombre';
@@ -663,12 +517,10 @@ function imprimirHaberes() {
 
   const nombresOrdenados = Object.keys(profesionales).sort();
 
-  // Obtener URLs absolutas de los logos
   const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
   const urlSantaFe = baseUrl + 'santa fe.webp';
   const urlHospital = baseUrl + 'hospital.png';
 
-  // Construir el HTML de los haberes
   let htmlHaberes = `
     <!DOCTYPE html>
     <html lang="es">
@@ -778,13 +630,208 @@ function imprimirHaberes() {
     </html>
   `;
 
-  // Abrir nueva ventana
   const ventana = window.open('', '_blank');
   if (!ventana) {
     alert('El navegador bloqueó la apertura de la nueva pestaña. Permití las ventanas emergentes para este sitio.');
     return;
   }
   ventana.document.write(htmlHaberes);
+  ventana.document.close();
+}
+
+// ============================================================
+// REPORTE COMPLETO EN NUEVA PESTAÑA
+// ============================================================
+function imprimirReporte() {
+  if (guardias.length === 0) {
+    alert('No hay datos para imprimir.');
+    return;
+  }
+
+  const mesTexto = document.getElementById('mesTitulo').textContent;
+  const fechaHoy = new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  const profesionales = {};
+  guardias.forEach(g => {
+    const nombre = g.profesional || 'Sin nombre';
+    if (!profesionales[nombre]) {
+      profesionales[nombre] = { q1: 0, q2: 0, guardias: [] };
+    }
+    const esPrimeraQuincena = (g.numero || 0) <= 15;
+    if (esPrimeraQuincena) {
+      profesionales[nombre].q1 += g.total || 0;
+    } else {
+      profesionales[nombre].q2 += g.total || 0;
+    }
+    profesionales[nombre].guardias.push(g);
+  });
+
+  const nombresOrdenados = Object.keys(profesionales).sort();
+  const totalGeneral = guardias.reduce((acc, g) => acc + (g.total || 0), 0);
+
+  const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+  const urlSantaFe = baseUrl + 'santa fe.webp';
+  const urlHospital = baseUrl + 'hospital.png';
+
+  const htmlReporte = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Reporte de Guardias - ${mesTexto}</title>
+      <style>
+        @page { size: A4 portrait; margin: 15mm; }
+        * { box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; padding: 20px; background: #fff; font-size: 11pt; }
+        .header { position: relative; padding-bottom: 12px; margin-bottom: 20px; border-bottom: 2px solid #000; min-height: 65px; }
+        .header .logo-santafe { position: absolute; top: 0; right: 0; height: 40px; width: auto; object-fit: contain; }
+        .header .logo-hospital { display: block; margin: 0 auto 10px auto; height: 60px; width: auto; object-fit: contain; }
+        .header h1 { text-align: center; font-size: 15pt; font-weight: 700; margin: 0 0 4px 0; letter-spacing: 0.04em; text-transform: uppercase; }
+        .header .sub { text-align: center; font-size: 10pt; color: #333; }
+        h2.seccion { font-size: 12pt; margin: 20px 0 8px 0; text-transform: uppercase; border-bottom: 1px solid #666; padding-bottom: 3px; }
+        table { width: 100%; border-collapse: collapse; font-size: 10pt; margin-bottom: 12px; }
+        th, td { border: 1px solid #000; padding: 5px 7px; text-align: left; }
+        th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 9pt; }
+        tfoot td { font-weight: 700; background: #f3f4f6; }
+        .recibo { page-break-inside: avoid; border: 1px solid #000; padding: 16px 18px; margin-bottom: 24px; }
+        .recibo-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding-bottom: 6px; margin-bottom: 12px; }
+        .recibo-header h3 { margin: 0; font-size: 12pt; text-transform: uppercase; }
+        .recibo-header span { font-size: 10pt; color: #333; }
+        .recibo-datos { display: flex; justify-content: space-between; font-size: 10pt; margin-bottom: 10px; }
+        .recibo-datos p { margin: 3px 0; }
+        .recibo-totales { display: flex; justify-content: flex-end; gap: 25px; font-size: 11pt; font-weight: 700; margin-top: 8px; }
+        .recibo-firma { margin-top: 45px; display: flex; justify-content: space-between; }
+        .recibo-firma div { border-top: 1px solid #000; width: 220px; text-align: center; padding-top: 6px; font-size: 9pt; }
+        .no-print { text-align: center; margin-bottom: 20px; display: flex; gap: 10px; justify-content: center; }
+        .no-print button { padding: 8px 20px; font-size: 13px; background: #111827; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-family: inherit; }
+        .no-print button:hover { background: #000; }
+        .no-print button.secundario { background: #fff; color: #111827; border: 1px solid #d1d5db; }
+        .no-print button.secundario:hover { background: #f9fafb; }
+        .page-break { page-break-after: always; }
+        @media print { .no-print { display: none !important; } body { padding: 0; margin: 0; } .recibo { border: 1px solid #000; } }
+      </style>
+    </head>
+    <body>
+      <div class="no-print">
+        <button onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>
+        <button class="secundario" onclick="window.close()">Cerrar</button>
+      </div>
+
+      <div class="header">
+        <img src="${urlSantaFe}" alt="Santa Fe" class="logo-santafe">
+        <img src="${urlHospital}" alt="Hospital" class="logo-hospital">
+        <h1>Hospital Julio César Villanueva</h1>
+        <div class="sub">San Cristóbal — Santa Fe</div>
+        <div class="sub"><strong>Reporte de Guardias Médicas — ${mesTexto}</strong></div>
+        <div class="sub">Generado el ${fechaHoy}</div>
+      </div>
+
+      <h2 class="seccion">Detalle General de Guardias</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Día</th>
+            <th>Nº</th>
+            <th>Profesional</th>
+            <th>Horas</th>
+            <th>Viático</th>
+            <th>Feriado</th>
+            <th>Monto Base</th>
+            <th>Viático $</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${guardias.map(g => `
+            <tr>
+              <td>${g.dia}</td>
+              <td>${g.numero || ''}</td>
+              <td>${g.profesional}</td>
+              <td>${g.horas}</td>
+              <td>${g.viatico ? 'Sí' : 'No'}</td>
+              <td>${g.esFeriado ? 'Sí' : 'No'}</td>
+              <td>${formatearMoneda(g.montoBase || 0)}</td>
+              <td>${formatearMoneda(g.montoViatico || 0)}</td>
+              <td><strong>${formatearMoneda(g.total || 0)}</strong></td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="8" style="text-align:right;">TOTAL GENERAL</td>
+            <td>${formatearMoneda(totalGeneral)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="page-break"></div>
+
+      <h2 class="seccion">Recibos Individuales por Profesional</h2>
+      
+      ${nombresOrdenados.map((nombre, index) => {
+        const p = profesionales[nombre];
+        const total = p.q1 + p.q2;
+        return `
+          <div class="recibo">
+            <div class="recibo-header">
+              <h3>Recibo de Haberes — Guardias Médicas</h3>
+              <span>${mesTexto}</span>
+            </div>
+            <div class="recibo-datos">
+              <p><strong>Profesional:</strong> ${nombre}</p>
+              <p><strong>Fecha de emisión:</strong> ${fechaHoy}</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Día</th>
+                  <th>Nº</th>
+                  <th>Horas</th>
+                  <th>Viático</th>
+                  <th>Feriado</th>
+                  <th>Monto Base</th>
+                  <th>Viático $</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${p.guardias.map(g => `
+                  <tr>
+                    <td>${g.dia}</td>
+                    <td>${g.numero || ''}</td>
+                    <td>${g.horas}</td>
+                    <td>${g.viatico ? 'Sí' : 'No'}</td>
+                    <td>${g.esFeriado ? 'Sí' : 'No'}</td>
+                    <td>${formatearMoneda(g.montoBase || 0)}</td>
+                    <td>${formatearMoneda(g.montoViatico || 0)}</td>
+                    <td>${formatearMoneda(g.total || 0)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            <div class="recibo-totales">
+              <span>1° Quincena: ${formatearMoneda(p.q1)}</span>
+              <span>2° Quincena: ${formatearMoneda(p.q2)}</span>
+              <span>TOTAL A LIQUIDAR: ${formatearMoneda(total)}</span>
+            </div>
+            <div class="recibo-firma">
+              <div>Firma del Profesional</div>
+              <div>Firma y Sello — Administración</div>
+            </div>
+          </div>
+          ${index < nombresOrdenados.length - 1 ? '<div class="page-break"></div>' : ''}
+        `;
+      }).join('')}
+    </body>
+    </html>
+  `;
+
+  const ventana = window.open('', '_blank');
+  if (!ventana) {
+    alert('El navegador bloqueó la apertura de la nueva pestaña. Permití las ventanas emergentes para este sitio.');
+    return;
+  }
+  ventana.document.write(htmlReporte);
   ventana.document.close();
 }
 
@@ -803,6 +850,7 @@ function exportarAExcel() {
     'Profesional': g.profesional,
     'Horas': g.horas,
     'Viático': g.viatico ? 'Sí' : 'No',
+    'Feriado': g.esFeriado ? 'Sí' : 'No',
     'Monto Base': g.montoBase,
     'Monto Viático': g.montoViatico,
     'Total': g.total
@@ -881,7 +929,7 @@ function cerrarModalPlantilla() {
 }
 
 // ============================================================
-// DESCARGAR PLANTILLA EXCEL EN BLANCO (estilo calendario)
+// DESCARGAR PLANTILLA EXCEL EN BLANCO
 // ============================================================
 function descargarPlantillaExcel() {
   const mes = parseInt(document.getElementById('plantillaMes').value);
@@ -896,32 +944,26 @@ function descargarPlantillaExcel() {
   const diasEnMes = new Date(anio, mes + 1, 0).getDate();
   const nombreMes = NOMBRES_MESES[mes];
 
-  // Construir array bidimensional (filas x columnas)
   const filas = [];
-  // Fila 1: Título
   filas.push([`GUARDIAS MÉDICAS ${nombreMes} ${anio}`, '', '', '', '']);
-  // Fila 2: Encabezados
   filas.push(['DÍA', 'Nº', 'APELLIDO Y NOMBRE', 'MONTO', 'VIÁTICO']);
-  // Filas de días
+  
   for (let dia = 1; dia <= diasEnMes; dia++) {
     const fecha = new Date(anio, mes, dia);
     const nombreDia = diasSemana[fecha.getDay()];
     filas.push([nombreDia, dia, '', '', '']);
   }
 
-  // Crear hoja
   const ws = XLSX.utils.aoa_to_sheet(filas);
 
-  // Anchos de columna
   ws['!cols'] = [
-    { wch: 14 }, // DÍA
-    { wch: 5 },  // Nº
-    { wch: 28 }, // APELLIDO Y NOMBRE
-    { wch: 15 }, // MONTO
-    { wch: 12 }  // VIÁTICO
+    { wch: 14 },
+    { wch: 5 },
+    { wch: 28 },
+    { wch: 15 },
+    { wch: 12 }
   ];
 
-  // Combinar celdas del título (A1:E1)
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }
   ];

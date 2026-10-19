@@ -209,9 +209,11 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   color: #059669;
 }
 
-/* Fila destacada para fines de semana */
+/* Fila destacada para fines de semana y feriados */
 .tabla-guardias tr.finde { background: #fefce8; }
 .tabla-guardias tr.finde:hover { background: #fef9c3; }
+.tabla-guardias tr.feriado { background: #fef2f2; }
+.tabla-guardias tr.feriado:hover { background: #fee2e2; }
 
 /* ============================================================
    RESUMEN
